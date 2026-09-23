@@ -31,8 +31,22 @@ class InterviewCoach:
 
     @property
     def uses_foundry_endpoint(self):
-        """True for any Microsoft Foundry / Azure AI Services endpoint."""
-        return bool(self.endpoint and ".services.ai.azure.com" in self.endpoint)
+        """True for any Microsoft Foundry / Azure AI Foundry endpoint.
+
+        Foundry endpoints may contain:
+          - .services.ai.azure.com  (classic AI Services projects)
+          - /openai/v1              (newer Foundry project endpoints)
+          - /v1                     (generic v1-style paths)
+        The key symptom: they require the plain OpenAI client (no api-version param).
+        """
+        if not self.endpoint:
+            return False
+        ep = self.endpoint.rstrip("/")
+        return (
+            ".services.ai.azure.com" in ep
+            or ep.endswith("/v1")
+            or "/openai/v1" in ep
+        )
 
     def interview_tracks(self):
         return TRACKS
@@ -50,33 +64,44 @@ class InterviewCoach:
             if self.uses_foundry_endpoint:
                 from openai import OpenAI
 
-                # Strip trailing /responses so the base_url ends at /openai/v1
+                # Ensure base_url ends at the /v1 root (no trailing slash, no /chat/completions)
                 base_url = self.endpoint.rstrip("/")
-                if base_url.endswith("/responses"):
-                    base_url = base_url[: -len("/responses")]
+                # Remove any extra path segments beyond /v1
+                for suffix in ("/responses", "/chat/completions", "/completions"):
+                    if base_url.endswith(suffix):
+                        base_url = base_url[: -len(suffix)]
 
                 if self.api_key:
-                    # API key available — use it directly (no az login needed)
                     client = OpenAI(base_url=base_url, api_key=self.api_key)
                 else:
                     # Fall back to Azure CLI / managed identity
                     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-                    token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://ai.azure.com/.default")
-                    client = OpenAI(base_url=base_url, api_key=token_provider)
+                    token_provider = get_bearer_token_provider(
+                        DefaultAzureCredential(), "https://ai.azure.com/.default"
+                    )
+                    client = OpenAI(base_url=base_url, api_key=token_provider())
 
-                response = client.responses.create(
+                # Foundry /v1 endpoints use the standard chat completions API —
+                # NOT the Responses API, and NOT AzureOpenAI (which adds api-version).
+                response = client.chat.completions.create(
                     model=self.deployment,
-                    instructions=messages[0]["content"],
-                    input="\n\n".join(f"{message['role'].upper()}: {message['content']}" for message in messages[1:]),
-                    max_output_tokens=500,
+                    messages=messages,
+                    temperature=0.65,
+                    max_tokens=500,
                 )
-                return response.output_text
+                return response.choices[0].message.content
 
             if not self.api_key:
                 return None
             from openai import AzureOpenAI
-            client = AzureOpenAI(api_key=self.api_key, api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"), azure_endpoint=self.endpoint)
-            response = client.chat.completions.create(model=self.deployment, messages=messages, temperature=0.65, max_tokens=500)
+            client = AzureOpenAI(
+                api_key=self.api_key,
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+                azure_endpoint=self.endpoint,
+            )
+            response = client.chat.completions.create(
+                model=self.deployment, messages=messages, temperature=0.65, max_tokens=500
+            )
             return response.choices[0].message.content
         except Exception as e:
             print(f"[ai_coach] completion failed: {e}")
