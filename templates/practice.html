@@ -3,15 +3,163 @@
 {% block content %}
 <main class="practice-shell">
   <a href="{{ url_for('dashboard') }}" class="back-link">← All practice tracks</a>
-  <section class="practice-heading"><div><p class="eyebrow blue">{{ track.category }} INTERVIEW</p><h1>{{ track.title }}</h1><p>Answer out loud or in writing. Your coach will help you sharpen your thinking.</p></div><div class="session-chip"><span></span> Practice session</div></section>
+  <section class="practice-heading">
+    <div>
+      <p class="eyebrow blue">{{ track.category }} INTERVIEW</p>
+      <h1>{{ track.title }}</h1>
+      <p>Answer out loud or in writing. Your coach will help you sharpen your thinking.</p>
+    </div>
+    <div class="session-chip"><span></span> Practice session</div>
+  </section>
+
   <section class="practice-layout">
     <div class="conversation" aria-live="polite">
       {% for message in history %}
-      <article class="message {{ message.role }}"><div class="message-avatar">{% if message.role == 'coach' %}<span class="coach-mark">P</span>{% else %}{{ user.name[:1]|upper }}{% endif %}</div><div class="message-body"><p class="message-label">{% if message.role == 'coach' %}PREPMATE COACH{% else %}YOU{% endif %}</p><div class="message-copy">{{ message.content }}</div>{% if message.role == 'coach' and voice_available %}<form action="{{ url_for('synthesize') }}" method="post"><input type="hidden" name="text" value="{{ message.content }}"><button class="listen-button" type="submit">♬ Listen</button></form>{% endif %}</div></article>
+      <article class="message {{ message.role }}">
+        <div class="message-avatar">
+          {% if message.role == 'coach' %}<span class="coach-mark">P</span>{% else %}{{ user.name[:1]|upper }}{% endif %}
+        </div>
+        <div class="message-body">
+          <p class="message-label">{% if message.role == 'coach' %}PREPMATE COACH{% else %}YOU{% endif %}</p>
+          <div class="message-copy">{{ message.content }}</div>
+          {% if message.role == 'coach' %}
+          <button class="listen-button" type="button"
+                  onclick="pmSpeak(this, {{ message.content | tojson }})"
+                  aria-label="Listen to this message">
+            ♬ Listen
+          </button>
+          {% endif %}
+        </div>
+      </article>
       {% endfor %}
-      <form method="post" class="answer-box"><label for="answer">Your answer</label><textarea id="answer" name="answer" rows="5" placeholder="Start typing your response here…" required></textarea><div><p>Tip: aim for a clear structure, then a specific example.</p><button class="primary-button" type="submit">Send answer <span>→</span></button></div></form>
+
+      <form method="post" class="answer-box" id="practice-form">
+        <label for="answer">Your answer</label>
+        <div class="answer-input-wrap">
+          <textarea id="answer" name="answer" rows="5"
+                    placeholder="Start typing or click 🎤 to speak your response…" required></textarea>
+          <button type="button" id="practice-mic-btn" class="mic-button mic-button--inside"
+                  title="Speak your answer"
+                  onclick="pmToggleMic(this, 'answer')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+              <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm6 10a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V22h2v-3.07A8 8 0 0 0 20 11h-2z"/>
+            </svg>
+          </button>
+        </div>
+        <div>
+          <p>Tip: aim for a clear structure, then a specific example.</p>
+          <button class="primary-button" type="submit">Send answer <span>→</span></button>
+        </div>
+      </form>
     </div>
-    <aside class="coach-sidebar"><div class="coach-portrait"><div class="portrait-orbit"></div><span>✦</span></div><p class="eyebrow">YOUR COACH</p><h2>Thoughtful,<br>not scripted.</h2><p>PrepMate listens for clarity, structure and proof — then gives you an actionable next step.</p><div class="side-rule"></div><p class="small-note">{{ 'Voice is on' if voice_available else 'Add Azure Speech settings to enable voice' }}</p></aside>
+
+    <aside class="coach-sidebar">
+      <div class="coach-portrait">
+        <div class="portrait-orbit"></div>
+        <span>✦</span>
+      </div>
+      <p class="eyebrow">YOUR COACH</p>
+      <h2>Thoughtful,<br>not scripted.</h2>
+      <p>PrepMate listens for clarity, structure and proof — then gives you an actionable next step.</p>
+      <div class="side-rule"></div>
+      <p class="small-note">🎤 Voice is on — click the mic to speak</p>
+    </aside>
   </section>
 </main>
+
+<script>
+/* ── Browser-native TTS ── */
+function pmSpeak(btn, text) {
+  if (!window.speechSynthesis) {
+    btn.textContent = '⚠ Not supported';
+    return;
+  }
+  if (btn.classList.contains('listening')) {
+    window.speechSynthesis.cancel();
+    btn.textContent = '♬ Listen';
+    btn.classList.remove('listening');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  document.querySelectorAll('.listen-button.listening').forEach(b => {
+    b.textContent = '♬ Listen';
+    b.classList.remove('listening');
+  });
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 0.95;
+  utter.pitch = 1;
+  utter.onstart = () => {
+    btn.textContent = '◼ Stop';
+    btn.classList.add('listening');
+  };
+  utter.onend = utter.onerror = () => {
+    btn.textContent = '♬ Listen';
+    btn.classList.remove('listening');
+  };
+  window.speechSynthesis.speak(utter);
+}
+
+/* ── Browser-native STT ── */
+let pmRecognizer = null;
+
+function pmToggleMic(btn, textareaId) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    btn.title = 'Voice input not supported in this browser. Try Chrome.';
+    btn.classList.add('mic-unsupported');
+    return;
+  }
+
+  const textarea = document.getElementById(textareaId);
+
+  if (pmRecognizer) {
+    pmRecognizer.stop();
+    return;
+  }
+
+  pmRecognizer = new SpeechRecognition();
+  pmRecognizer.continuous = true;
+  pmRecognizer.interimResults = true;
+  pmRecognizer.lang = 'en-US';
+
+  const base = textarea.value;
+
+  pmRecognizer.onresult = (e) => {
+    let interim = '';
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+    textarea.value = base + final + interim;
+  };
+
+  pmRecognizer.onstart = () => {
+    btn.classList.add('mic-active');
+    btn.title = 'Click to stop recording';
+  };
+
+  pmRecognizer.onend = () => {
+    btn.classList.remove('mic-active');
+    btn.title = 'Speak your answer';
+    pmRecognizer = null;
+  };
+
+  pmRecognizer.onerror = (e) => {
+    console.warn('Speech recognition error', e.error);
+    btn.classList.remove('mic-active');
+    pmRecognizer = null;
+  };
+
+  pmRecognizer.start();
+}
+
+/* Auto-scroll to latest message */
+window.addEventListener('DOMContentLoaded', () => {
+  const conv = document.querySelector('.conversation');
+  if (conv) conv.scrollTop = conv.scrollHeight;
+});
+</script>
 {% endblock %}

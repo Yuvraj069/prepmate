@@ -2,11 +2,152 @@
 {% block title %}Ask PrepMate{% endblock %}
 {% block content %}
 <main class="ask-shell">
-  <section class="ask-intro"><p class="eyebrow blue">OPEN COACHING</p><h1>Let's work<br>through it.</h1><p>Ask about an upcoming interview, a difficult question, or how to tell your story.</p><div class="prompt-pills"><span>“How do I answer tell me about yourself?”</span><span>“Give me a product case.”</span><span>“Review my STAR answer.”</span></div></section>
+  <section class="ask-intro">
+    <p class="eyebrow blue">OPEN COACHING</p>
+    <h1>Let's work<br>through it.</h1>
+    <p>Ask about an upcoming interview, a difficult question, or how to tell your story.</p>
+    <div class="prompt-pills">
+      <span>"How do I answer tell me about yourself?"</span>
+      <span>"Give me a product case."</span>
+      <span>"Review my STAR answer."</span>
+    </div>
+  </section>
+
   <section class="ask-chat">
-    {% if not chat %}<div class="empty-chat"><span class="empty-mark">P</span><h2>Your coach is here.</h2><p>Start with the question you have been turning over in your head.</p></div>{% endif %}
-    {% for message in chat %}<article class="message {{ message.role }}"><div class="message-avatar">{% if message.role == 'coach' %}<span class="coach-mark">P</span>{% else %}{{ user.name[:1]|upper }}{% endif %}</div><div class="message-body"><p class="message-label">{% if message.role == 'coach' %}PREPMATE{% else %}YOU{% endif %}</p><div class="message-copy">{{ message.content }}</div>{% if message.role == 'coach' and voice_available %}<form action="{{ url_for('synthesize') }}" method="post"><input type="hidden" name="text" value="{{ message.content }}"><button class="listen-button" type="submit">♬ Listen</button></form>{% endif %}</div></article>{% endfor %}
-    <form method="post" class="ask-box"><textarea name="prompt" rows="3" placeholder="Ask PrepMate anything…" required></textarea><button type="submit" class="primary-button">Send <span>→</span></button></form>
+    {% if not chat %}
+    <div class="empty-chat">
+      <span class="empty-mark">P</span>
+      <h2>Your coach is here.</h2>
+      <p>Start with the question you have been turning over in your head.</p>
+    </div>
+    {% endif %}
+
+    {% for message in chat %}
+    <article class="message {{ message.role }}">
+      <div class="message-avatar">
+        {% if message.role == 'coach' %}<span class="coach-mark">P</span>{% else %}{{ user.name[:1]|upper }}{% endif %}
+      </div>
+      <div class="message-body">
+        <p class="message-label">{% if message.role == 'coach' %}PREPMATE{% else %}YOU{% endif %}</p>
+        <div class="message-copy">{{ message.content }}</div>
+        {% if message.role == 'coach' %}
+        <button class="listen-button" type="button"
+                onclick="pmSpeak(this, {{ message.content | tojson }})"
+                aria-label="Listen to this message">
+          ♬ Listen
+        </button>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+
+    <form method="post" class="ask-box" id="ask-form">
+      <div class="ask-input-wrap">
+        <textarea id="ask-textarea" name="prompt" rows="3"
+                  placeholder="Ask PrepMate anything…" required></textarea>
+        <button type="button" id="ask-mic-btn" class="mic-button" title="Speak your question"
+                onclick="pmToggleMic(this, 'ask-textarea')">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm6 10a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V22h2v-3.07A8 8 0 0 0 20 11h-2z"/>
+          </svg>
+        </button>
+      </div>
+      <button type="submit" class="primary-button">Send <span>→</span></button>
+    </form>
   </section>
 </main>
+
+<script>
+/* ── Browser-native TTS ── */
+let pmCurrentUtterance = null;
+
+function pmSpeak(btn, text) {
+  if (!window.speechSynthesis) {
+    btn.textContent = '⚠ Not supported';
+    return;
+  }
+  // Toggle off if already playing this button
+  if (btn.classList.contains('listening')) {
+    window.speechSynthesis.cancel();
+    btn.textContent = '♬ Listen';
+    btn.classList.remove('listening');
+    return;
+  }
+  // Stop any other playing
+  window.speechSynthesis.cancel();
+  document.querySelectorAll('.listen-button.listening').forEach(b => {
+    b.textContent = '♬ Listen';
+    b.classList.remove('listening');
+  });
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 0.95;
+  utter.pitch = 1;
+  utter.onstart = () => {
+    btn.textContent = '◼ Stop';
+    btn.classList.add('listening');
+  };
+  utter.onend = utter.onerror = () => {
+    btn.textContent = '♬ Listen';
+    btn.classList.remove('listening');
+  };
+  window.speechSynthesis.speak(utter);
+}
+
+/* ── Browser-native STT ── */
+let pmRecognizer = null;
+
+function pmToggleMic(btn, textareaId) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    btn.title = 'Voice input not supported in this browser';
+    btn.classList.add('mic-unsupported');
+    return;
+  }
+
+  const textarea = document.getElementById(textareaId);
+
+  if (pmRecognizer) {
+    pmRecognizer.stop();
+    return;
+  }
+
+  pmRecognizer = new SpeechRecognition();
+  pmRecognizer.continuous = true;
+  pmRecognizer.interimResults = true;
+  pmRecognizer.lang = 'en-US';
+
+  const base = textarea.value;
+
+  pmRecognizer.onresult = (e) => {
+    let interim = '';
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+    textarea.value = base + final + interim;
+  };
+
+  pmRecognizer.onstart = () => {
+    btn.classList.add('mic-active');
+    btn.title = 'Click to stop recording';
+  };
+
+  pmRecognizer.onend = () => {
+    btn.classList.remove('mic-active');
+    btn.title = 'Speak your question';
+    pmRecognizer = null;
+  };
+
+  pmRecognizer.onerror = (e) => {
+    console.warn('Speech recognition error', e.error);
+    btn.classList.remove('mic-active');
+    pmRecognizer = null;
+  };
+
+  pmRecognizer.start();
+}
+</script>
 {% endblock %}
