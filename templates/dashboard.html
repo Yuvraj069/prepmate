@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Practice · PrepMate{% endblock %}
+{% block content %}
+<main class="dashboard-shell">
+  <section class="dashboard-hero">
+    <div>
+      <p class="eyebrow blue">INTERVIEW PRACTICE STUDIO</p>
+      <h1>Make your next<br>answer count.</h1>
+      <p class="subcopy">Choose a role, meet your AI coach, and practise until your best answer feels natural.</p>
+    </div>
+    <div class="hero-orbit" aria-hidden="true">
+      <div class="orbit-ring ring-one"></div>
+      <div class="orbit-ring ring-two"></div>
+      <div class="orbit-core">P<span>✦</span></div>
+      <p>Ready when<br>you are</p>
+    </div>
+  </section>
+  <section class="section-head">
+    <div>
+      <p class="eyebrow">PICK A PRACTICE TRACK</p>
+      <h2>What are you preparing for?</h2>
+    </div><a class="text-action" href="{{ url_for('ask') }}">Not sure? Ask PrepMate <span>→</span></a>
+  </section>
+  <section class="track-grid">
+    {% for track in interviews %}
+    <article class="track-card {{ track.color }}">
+      <div class="track-top"><span class="track-icon">{{ track.icon }}</span><span class="tag">{{ track.category
+          }}</span></div>
+      <h3>{{ track.title }}</h3>
+      <p>{{ track.description }}</p><a href="{{ url_for('practice', track_id=track.id) }}"
+        aria-label="Start {{ track.title }} practice">Start practice <span>→</span></a>
+    </article>
+    {% endfor %}
+  </section>
+  <section class="ask-banner">
+    <div class="banner-spark">✦</div>
+    <div>
+      <p class="eyebrow">OPEN COACHING</p>
+      <h2>Have a question that doesn't fit a track?</h2>
+    </div><a class="light-button" href="{{ url_for('ask') }}">Talk to PrepMate <span>→</span></a>
+  </section>
+</main>
+{% endblock %}

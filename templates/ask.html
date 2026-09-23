@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Ask PrepMate{% endblock %}
+{% block content %}
+<main class="ask-shell">
+  <section class="ask-intro"><p class="eyebrow blue">OPEN COACHING</p><h1>Let's work<br>through it.</h1><p>Ask about an upcoming interview, a difficult question, or how to tell your story.</p><div class="prompt-pills"><span>“How do I answer tell me about yourself?”</span><span>“Give me a product case.”</span><span>“Review my STAR answer.”</span></div></section>
+  <section class="ask-chat">
+    {% if not chat %}<div class="empty-chat"><span class="empty-mark">P</span><h2>Your coach is here.</h2><p>Start with the question you have been turning over in your head.</p></div>{% endif %}
+    {% for message in chat %}<article class="message {{ message.role }}"><div class="message-avatar">{% if message.role == 'coach' %}<span class="coach-mark">P</span>{% else %}{{ user.name[:1]|upper }}{% endif %}</div><div class="message-body"><p class="message-label">{% if message.role == 'coach' %}PREPMATE{% else %}YOU{% endif %}</p><div class="message-copy">{{ message.content }}</div>{% if message.role == 'coach' and voice_available %}<form action="{{ url_for('synthesize') }}" method="post"><input type="hidden" name="text" value="{{ message.content }}"><button class="listen-button" type="submit">♬ Listen</button></form>{% endif %}</div></article>{% endfor %}
+    <form method="post" class="ask-box"><textarea name="prompt" rows="3" placeholder="Ask PrepMate anything…" required></textarea><button type="submit" class="primary-button">Send <span>→</span></button></form>
+  </section>
+</main>
+{% endblock %}

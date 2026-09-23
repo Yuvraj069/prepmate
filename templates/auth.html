@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<main class="auth-page">
+  <section class="auth-aside">
+    <a class="brand light" href="{{ url_for('auth_page') }}"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>PrepMate</a>
+    <div class="auth-message">
+      <p class="eyebrow">YOUR INTERVIEW, MORE READY</p>
+      <h1>Practice with<br>purpose.</h1>
+      <p>Meet the calmest voice in the interview room. PrepMate helps you think clearly, answer sharply, and show up prepared.</p>
+      <div class="quote-card"><span class="quote-symbol">“</span><p>I helped you uncover the best of your experience. You did the rest.</p><div><span class="mini-avatar">P</span><span>PrepMate AI Coach</span></div></div>
+    </div>
+    <div class="grain"></div>
+  </section>
+  <section class="auth-panel">
+    <div class="auth-form-wrap">
+      <div class="auth-heading">
+        <p class="eyebrow blue">WELCOME TO PREPMATE</p>
+        <h2>{% if mode == 'register' %}Build your<br>interview edge.{% else %}Good to see<br>you again.{% endif %}</h2>
+        <p>{% if mode == 'register' %}A more confident interview starts with one conversation.{% else %}Your next great answer is waiting.{% endif %}</p>
+      </div>
+      <form method="post" class="auth-form">
+        <input type="hidden" name="mode" value="{{ mode }}">
+        {% if mode == 'register' %}<label>Full name<input name="name" autocomplete="name" placeholder="Ada Lovelace" required></label>{% endif %}
+        <label>Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+        <label>Password<input name="password" type="password" autocomplete="{% if mode == 'register' %}new-password{% else %}current-password{% endif %}" placeholder="••••••••" minlength="6" required></label>
+        <button class="primary-button" type="submit">{% if mode == 'register' %}Create your account <span>→</span>{% else %}Continue <span>→</span>{% endif %}</button>
+      </form>
+      <p class="switch-copy">{% if mode == 'register' %}Already have an account? <a href="{{ url_for('auth_page', mode='login') }}">Sign in</a>{% else %}New to PrepMate? <a href="{{ url_for('auth_page', mode='register') }}">Create an account</a>{% endif %}</p>
+      <p class="terms">By continuing, you agree to our Terms of use and Privacy policy.</p>
+    </div>
+  </section>
+</main>
+{% endblock %}
