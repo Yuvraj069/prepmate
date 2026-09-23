@@ -42,46 +42,20 @@ Both modes include **voice output** (browser TTS reads coach responses aloud) an
 
 ## 🏗️ Solution Architecture & Data Flow
 
-```
-┌─────────────┐     HTTPS      ┌──────────────────────────────────────────┐
-│   Browser   │◄──────────────►│            Flask App (Render)            │
-│  (HTML/CSS) │                │                                          │
-│             │                │  ┌──────────┐   ┌────────────────────┐  │
-│ speechSynth │                │  │  Auth    │   │   InterviewCoach   │  │
-│ SpeechRecog │                │  │ Service  │   │   (ai_coach.py)    │  │
-└─────────────┘                │  └────┬─────┘   └────────┬───────────┘  │
-                               │       │                   │              │
-                               │  ┌────▼──────┐   ┌───────▼────────────┐ │
-                               │  │ Supabase  │   │  RAG Service       │ │
-                               │  │  (Auth &  │   │  (rag.py)          │ │
-                               │  │  Users)   │   └───────┬────────────┘ │
-                               │  └───────────┘           │              │
-                               └──────────────────────────┼──────────────┘
-                                                          │
-                               ┌──────────────────────────▼──────────────┐
-                               │           Azure AI Services              │
-                               │                                          │
-                               │  ┌─────────────────────────────────┐    │
-                               │  │  Azure AI Foundry / OpenAI      │    │
-                               │  │  (GPT-4o · chat completions)    │    │
-                               │  └─────────────────────────────────┘    │
-                               │                                          │
-                               │  ┌─────────────────────────────────┐    │
-                               │  │  Azure AI Search (optional RAG) │    │
-                               │  │  Interview knowledge base        │    │
-                               │  └─────────────────────────────────┘    │
-                               └──────────────────────────────────────────┘
-```
+PrepMate is built as a **Flask web application** hosted on Render. When a user opens the app in their browser, all page interactions happen over HTTPS. Here is how the main pieces connect:
 
-### Request Flow
+The **browser** is responsible for rendering the UI and handling all voice features locally — it uses the built-in Web Speech API to read coach responses aloud and transcribe mic input into text, with no extra server calls needed.
 
-1. **User signs in** → Flask checks credentials against Supabase; session stored in a secure cookie.
-2. **Practice / Ask request** → Flask calls `InterviewCoach`, which:
-   - Optionally retrieves grounding context from **Azure AI Search** (RAG).
-   - Builds a system + user message array and calls **Azure AI Foundry** via the OpenAI SDK.
-   - Returns the model's response to the template.
-3. **Voice output** → the browser's `speechSynthesis` API reads coach messages aloud — no server round-trip.
-4. **Voice input** → the browser's `SpeechRecognition` API transcribes mic audio directly into the textarea — no server round-trip.
+The **Flask app** sits at the centre. It handles login and session management through **Supabase** (a cloud database and auth service that stores user accounts). When a user submits an answer or asks a question, Flask passes the request to the **InterviewCoach** module, which first checks **Azure AI Search** for any relevant interview knowledge to use as context (this is the RAG step), then sends the full conversation to **Azure AI Foundry** (running a GPT-4o model) to generate a personalised coaching response. That response is returned to the browser and displayed on screen.
+
+In short, the data flows like this:
+
+1. **User signs in** → Flask verifies credentials with Supabase and stores the session in a secure cookie.
+2. **User submits an answer or question** → Flask calls the InterviewCoach, which fetches relevant context from Azure AI Search, then asks Azure AI Foundry (GPT-4o) for a coaching response.
+3. **Coach reply is displayed** → the browser renders the text; the user can click **Listen** to have it read aloud via the browser's built-in speech engine.
+4. **Voice input** → the user can click the mic button; the browser transcribes speech directly into the text box in real time, again with no server involvement.
+
+
 
 ---
 
