@@ -30,8 +30,9 @@ class InterviewCoach:
         self.knowledge = InterviewKnowledgeBase()
 
     @property
-    def uses_foundry_identity(self):
-        return bool(self.endpoint and ".services.ai.azure.com/openai/v1" in self.endpoint)
+    def uses_foundry_endpoint(self):
+        """True for any Microsoft Foundry / Azure AI Services endpoint."""
+        return bool(self.endpoint and ".services.ai.azure.com" in self.endpoint)
 
     def interview_tracks(self):
         return TRACKS
@@ -46,12 +47,23 @@ class InterviewCoach:
         if not (self.endpoint and self.deployment):
             return None
         try:
-            if self.uses_foundry_identity:
-                from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+            if self.uses_foundry_endpoint:
                 from openai import OpenAI
 
-                token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://ai.azure.com/.default")
-                client = OpenAI(base_url=self.endpoint.rstrip("/"), api_key=token_provider)
+                # Strip trailing /responses so the base_url ends at /openai/v1
+                base_url = self.endpoint.rstrip("/")
+                if base_url.endswith("/responses"):
+                    base_url = base_url[: -len("/responses")]
+
+                if self.api_key:
+                    # API key available — use it directly (no az login needed)
+                    client = OpenAI(base_url=base_url, api_key=self.api_key)
+                else:
+                    # Fall back to Azure CLI / managed identity
+                    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+                    token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://ai.azure.com/.default")
+                    client = OpenAI(base_url=base_url, api_key=token_provider)
+
                 response = client.responses.create(
                     model=self.deployment,
                     instructions=messages[0]["content"],
