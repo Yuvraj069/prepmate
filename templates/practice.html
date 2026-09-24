@@ -17,15 +17,15 @@
       {% for message in history %}
       <article class="message {{ message.role }}">
         <div class="message-avatar">
-          {% if message.role == 'coach' %}<span class="coach-mark">P</span>{% else %}{{ user.name[:1]|upper }}{% endif %}
+          {% if message.role == 'coach' %}<span class="coach-mark">P</span>{% else %}{{ user.name[:1]|upper }}{% endif
+          %}
         </div>
         <div class="message-body">
           <p class="message-label">{% if message.role == 'coach' %}PREPMATE COACH{% else %}YOU{% endif %}</p>
           <div class="message-copy">{{ message.content }}</div>
           {% if message.role == 'coach' %}
-          <button class="listen-button" type="button"
-                  onclick="pmSpeak(this, {{ message.content | tojson }})"
-                  aria-label="Listen to this message">
+          <button class="listen-button" type="button" onclick="pmSpeak(this, {{ message.content | tojson }})"
+            aria-label="Listen to this message">
             ♬ Listen
           </button>
           {% endif %}
@@ -36,13 +36,13 @@
       <form method="post" class="answer-box" id="practice-form">
         <label for="answer">Your answer</label>
         <div class="answer-input-wrap">
-          <textarea id="answer" name="answer" rows="5"
-                    placeholder="Start typing or click 🎤 to speak your response…" required></textarea>
-          <button type="button" id="practice-mic-btn" class="mic-button mic-button--inside"
-                  title="Speak your answer"
-                  onclick="pmToggleMic(this, 'answer')">
+          <textarea id="answer" name="answer" rows="5" placeholder="Start typing or click 🎤 to speak your response…"
+            required></textarea>
+          <button type="button" id="practice-mic-btn" class="mic-button mic-button--inside" title="Speak your answer"
+            onclick="pmToggleMic(this, 'answer')">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-              <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm6 10a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V22h2v-3.07A8 8 0 0 0 20 11h-2z"/>
+              <path
+                d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm6 10a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V22h2v-3.07A8 8 0 0 0 20 11h-2z" />
             </svg>
           </button>
         </div>
@@ -68,174 +68,132 @@
 </main>
 
 <script>
-/* ── Browser-native TTS ── */
+  /* ── Browser-native TTS (Chrome-safe) ── */
+  let _pmResumeTimer = null;
 
-// Pre-load voices (async on Chrome)
-let _pmVoices = [];
-function _pmLoadVoices() {
-  _pmVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
-}
-_pmLoadVoices();
-if (window.speechSynthesis) {
-  window.speechSynthesis.addEventListener('voiceschanged', _pmLoadVoices);
-}
-
-// Strip markdown / special chars before speaking
-function _pmCleanText(raw) {
-  return raw
-    .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')  // bold / italic
-    .replace(/_{1,2}([^_]+)_{1,2}/g, '$1')      // underscore emphasis
-    .replace(/`([^`]+)`/g, '$1')                 // inline code
-    .replace(/#+\s*/g, '')                       // headings
-    .replace(/\n+/g, '. ')                       // newlines → pause
-    .trim();
-}
-
-// Chrome bug: speechSynthesis pauses silently after ~15 s.
-// Keep it alive by pause/resume every 10 s.
-let _pmKeepalive = null;
-function _pmStartKeepalive() {
-  _pmStopKeepalive();
-  _pmKeepalive = setInterval(() => {
-    if (window.speechSynthesis && window.speechSynthesis.speaking) {
-      window.speechSynthesis.pause();
-      window.speechSynthesis.resume();
-    } else {
-      _pmStopKeepalive();
-    }
-  }, 10000);
-}
-function _pmStopKeepalive() {
-  if (_pmKeepalive) { clearInterval(_pmKeepalive); _pmKeepalive = null; }
-}
-
-function _pmResetAllListenBtns() {
-  document.querySelectorAll('.listen-button.listening').forEach(b => {
-    b.textContent = '♬ Listen';
-    b.classList.remove('listening');
-  });
-}
-
-function pmSpeak(btn, text) {
-  if (!window.speechSynthesis) {
-    btn.textContent = '⚠ Not supported';
-    return;
+  function _pmResetListenButtons() {
+    document.querySelectorAll('.listen-button.listening').forEach(b => {
+      b.textContent = '♬ Listen';
+      b.classList.remove('listening');
+    });
+    if (_pmResumeTimer) { clearInterval(_pmResumeTimer); _pmResumeTimer = null; }
   }
 
-  // Toggle off if already speaking this button
-  if (btn.classList.contains('listening')) {
+  function _pmDoSpeak(btn, text) {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 0.95;
+    utter.pitch = 1;
+    // Prefer an English voice when available
+    const voices = window.speechSynthesis.getVoices();
+    const engVoice = voices.find(v => v.lang.startsWith('en') && !v.localService === false)
+                  || voices.find(v => v.lang.startsWith('en'))
+                  || voices[0];
+    if (engVoice) utter.voice = engVoice;
+
+    utter.onstart = () => {
+      btn.textContent = '◼ Stop';
+      btn.classList.add('listening');
+      // Chrome silently pauses synthesis after ~15 s — keep it alive
+      _pmResumeTimer = setInterval(() => {
+        if (!window.speechSynthesis.speaking) { clearInterval(_pmResumeTimer); _pmResumeTimer = null; return; }
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }, 10000);
+    };
+    utter.onend = () => { _pmResetListenButtons(); };
+    utter.onerror = (e) => {
+      if (e.error !== 'interrupted') console.warn('TTS error', e.error);
+      _pmResetListenButtons();
+    };
+    window.speechSynthesis.speak(utter);
+  }
+
+  function pmSpeak(btn, text) {
+    if (!window.speechSynthesis) {
+      btn.textContent = '⚠ Not supported';
+      return;
+    }
+    // Toggle off if already playing
+    if (btn.classList.contains('listening')) {
+      window.speechSynthesis.cancel();
+      _pmResetListenButtons();
+      return;
+    }
     window.speechSynthesis.cancel();
-    _pmStopKeepalive();
-    _pmResetAllListenBtns();
-    return;
-  }
+    _pmResetListenButtons();
 
-  // Cancel any in-progress speech
-  window.speechSynthesis.cancel();
-  _pmStopKeepalive();
-  _pmResetAllListenBtns();
-
-  const cleaned = _pmCleanText(text);
-  if (!cleaned) return;
-
-  const utter = new SpeechSynthesisUtterance(cleaned);
-  utter.rate = 0.95;
-  utter.pitch = 1;
-
-  // Pick a good English voice if available
-  const enVoice = _pmVoices.find(v => v.lang.startsWith('en') && !v.localService === false)
-               || _pmVoices.find(v => v.lang.startsWith('en'))
-               || _pmVoices[0];
-  if (enVoice) utter.voice = enVoice;
-
-  utter.onstart = () => {
-    btn.textContent = '◼ Stop';
-    btn.classList.add('listening');
-    _pmStartKeepalive();
-  };
-
-  const _done = () => {
-    btn.textContent = '♬ Listen';
-    btn.classList.remove('listening');
-    _pmStopKeepalive();
-  };
-  utter.onend = _done;
-  utter.onerror = (e) => {
-    // 'interrupted' is normal when user clicks Stop — don't flash an error
-    if (e.error !== 'interrupted' && e.error !== 'canceled') {
-      btn.textContent = '⚠ Error';
-      setTimeout(() => { btn.textContent = '♬ Listen'; }, 2500);
+    // Wait for voices to load (Chrome defers this)
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      _pmDoSpeak(btn, text);
     } else {
-      btn.textContent = '♬ Listen';
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.onvoiceschanged = null;
+        _pmDoSpeak(btn, text);
+      };
     }
-    btn.classList.remove('listening');
-    _pmStopKeepalive();
-  };
-
-  // Small delay so cancel() above has time to settle (especially on Safari)
-  setTimeout(() => window.speechSynthesis.speak(utter), 120);
-}
-
-/* ── Browser-native STT ── */
-let pmRecognizer = null;
-
-function pmToggleMic(btn, textareaId) {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    btn.title = 'Voice input not supported in this browser. Try Chrome.';
-    btn.classList.add('mic-unsupported');
-    return;
   }
 
-  const textarea = document.getElementById(textareaId);
+  /* ── Browser-native STT ── */
+  let pmRecognizer = null;
 
-  if (pmRecognizer) {
-    pmRecognizer.stop();
-    return;
+  function pmToggleMic(btn, textareaId) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      btn.title = 'Voice input not supported in this browser. Try Chrome.';
+      btn.classList.add('mic-unsupported');
+      return;
+    }
+
+    const textarea = document.getElementById(textareaId);
+
+    if (pmRecognizer) {
+      pmRecognizer.stop();
+      return;
+    }
+
+    pmRecognizer = new SpeechRecognition();
+    pmRecognizer.continuous = true;
+    pmRecognizer.interimResults = true;
+    pmRecognizer.lang = 'en-US';
+
+    const base = textarea.value;
+
+    pmRecognizer.onresult = (e) => {
+      let interim = '';
+      let final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += t;
+        else interim += t;
+      }
+      textarea.value = base + final + interim;
+    };
+
+    pmRecognizer.onstart = () => {
+      btn.classList.add('mic-active');
+      btn.title = 'Click to stop recording';
+    };
+
+    pmRecognizer.onend = () => {
+      btn.classList.remove('mic-active');
+      btn.title = 'Speak your answer';
+      pmRecognizer = null;
+    };
+
+    pmRecognizer.onerror = (e) => {
+      console.warn('Speech recognition error', e.error);
+      btn.classList.remove('mic-active');
+      pmRecognizer = null;
+    };
+
+    pmRecognizer.start();
   }
 
-  pmRecognizer = new SpeechRecognition();
-  pmRecognizer.continuous = true;
-  pmRecognizer.interimResults = true;
-  pmRecognizer.lang = 'en-US';
-
-  const base = textarea.value;
-
-  pmRecognizer.onresult = (e) => {
-    let interim = '';
-    let final = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) final += t;
-      else interim += t;
-    }
-    textarea.value = base + final + interim;
-  };
-
-  pmRecognizer.onstart = () => {
-    btn.classList.add('mic-active');
-    btn.title = 'Click to stop recording';
-  };
-
-  pmRecognizer.onend = () => {
-    btn.classList.remove('mic-active');
-    btn.title = 'Speak your answer';
-    pmRecognizer = null;
-  };
-
-  pmRecognizer.onerror = (e) => {
-    console.warn('Speech recognition error', e.error);
-    btn.classList.remove('mic-active');
-    pmRecognizer = null;
-  };
-
-  pmRecognizer.start();
-}
-
-/* Auto-scroll to latest message */
-window.addEventListener('DOMContentLoaded', () => {
-  const conv = document.querySelector('.conversation');
-  if (conv) conv.scrollTop = conv.scrollHeight;
-});
+  /* Auto-scroll to latest message */
+  window.addEventListener('DOMContentLoaded', () => {
+    const conv = document.querySelector('.conversation');
+    if (conv) conv.scrollTop = conv.scrollHeight;
+  });
 </script>
 {% endblock %}

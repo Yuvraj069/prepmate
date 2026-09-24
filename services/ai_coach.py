@@ -64,12 +64,23 @@ class InterviewCoach:
             if self.uses_foundry_endpoint:
                 from openai import OpenAI
 
-                # Ensure base_url ends at the /v1 root (no trailing slash, no /chat/completions)
-                base_url = self.endpoint.rstrip("/")
-                # Remove any extra path segments beyond /v1
-                for suffix in ("/responses", "/chat/completions", "/completions"):
-                    if base_url.endswith(suffix):
-                        base_url = base_url[: -len(suffix)]
+                # The Foundry project endpoint looks like:
+                #   https://<resource>.services.ai.azure.com/api/projects/<proj>/openai/v1/responses
+                # The OpenAI SDK needs the *inference* base_url, which is:
+                #   https://<resource>.services.ai.azure.com/openai/v1
+                # We extract just the scheme+host, then append /openai/v1.
+                import re
+                ep = self.endpoint.rstrip("/")
+                # Strip any path — keep only scheme + host
+                match = re.match(r"(https?://[^/]+)", ep)
+                if match:
+                    base_url = match.group(1) + "/openai/v1"
+                else:
+                    # Fallback: strip known suffixes iteratively
+                    for suffix in ("/responses", "/chat/completions", "/completions"):
+                        if ep.endswith(suffix):
+                            ep = ep[: -len(suffix)]
+                    base_url = ep
 
                 if self.api_key:
                     client = OpenAI(base_url=base_url, api_key=self.api_key)
@@ -81,8 +92,7 @@ class InterviewCoach:
                     )
                     client = OpenAI(base_url=base_url, api_key=token_provider())
 
-                # Foundry /v1 endpoints use the standard chat completions API —
-                # NOT the Responses API, and NOT AzureOpenAI (which adds api-version).
+                # Use the standard chat completions API — NOT the Responses API
                 response = client.chat.completions.create(
                     model=self.deployment,
                     messages=messages,

@@ -58,51 +58,44 @@
 </main>
 
 <script>
-/* ── Browser-native TTS ── */
+/* ── Browser-native TTS (Chrome-safe) ── */
+let _pmResumeTimer = null;
 
-// Pre-load voices (async on Chrome)
-let _pmVoices = [];
-function _pmLoadVoices() {
-  _pmVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
-}
-_pmLoadVoices();
-if (window.speechSynthesis) {
-  window.speechSynthesis.addEventListener('voiceschanged', _pmLoadVoices);
-}
-
-// Strip markdown / special chars before speaking
-function _pmCleanText(raw) {
-  return raw
-    .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')
-    .replace(/_{1,2}([^_]+)_{1,2}/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/#+\s*/g, '')
-    .replace(/\n+/g, '. ')
-    .trim();
-}
-
-// Chrome keepalive: prevents the ~15s silent pause bug
-let _pmKeepalive = null;
-function _pmStartKeepalive() {
-  _pmStopKeepalive();
-  _pmKeepalive = setInterval(() => {
-    if (window.speechSynthesis && window.speechSynthesis.speaking) {
-      window.speechSynthesis.pause();
-      window.speechSynthesis.resume();
-    } else {
-      _pmStopKeepalive();
-    }
-  }, 10000);
-}
-function _pmStopKeepalive() {
-  if (_pmKeepalive) { clearInterval(_pmKeepalive); _pmKeepalive = null; }
-}
-
-function _pmResetAllListenBtns() {
+function _pmResetListenButtons() {
   document.querySelectorAll('.listen-button.listening').forEach(b => {
     b.textContent = '♬ Listen';
     b.classList.remove('listening');
   });
+  if (_pmResumeTimer) { clearInterval(_pmResumeTimer); _pmResumeTimer = null; }
+}
+
+function _pmDoSpeak(btn, text) {
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 0.95;
+  utter.pitch = 1;
+  // Prefer an English voice when available
+  const voices = window.speechSynthesis.getVoices();
+  const engVoice = voices.find(v => v.lang.startsWith('en') && !v.localService === false)
+                || voices.find(v => v.lang.startsWith('en'))
+                || voices[0];
+  if (engVoice) utter.voice = engVoice;
+
+  utter.onstart = () => {
+    btn.textContent = '◼ Stop';
+    btn.classList.add('listening');
+    // Chrome silently pauses synthesis after ~15 s — keep it alive
+    _pmResumeTimer = setInterval(() => {
+      if (!window.speechSynthesis.speaking) { clearInterval(_pmResumeTimer); _pmResumeTimer = null; return; }
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }, 10000);
+  };
+  utter.onend = () => { _pmResetListenButtons(); };
+  utter.onerror = (e) => {
+    if (e.error !== 'interrupted') console.warn('TTS error', e.error);
+    _pmResetListenButtons();
+  };
+  window.speechSynthesis.speak(utter);
 }
 
 function pmSpeak(btn, text) {
@@ -110,53 +103,25 @@ function pmSpeak(btn, text) {
     btn.textContent = '⚠ Not supported';
     return;
   }
+  // Toggle off if already playing
   if (btn.classList.contains('listening')) {
     window.speechSynthesis.cancel();
-    _pmStopKeepalive();
-    _pmResetAllListenBtns();
+    _pmResetListenButtons();
     return;
   }
   window.speechSynthesis.cancel();
-  _pmStopKeepalive();
-  _pmResetAllListenBtns();
+  _pmResetListenButtons();
 
-  const cleaned = _pmCleanText(text);
-  if (!cleaned) return;
-
-  const utter = new SpeechSynthesisUtterance(cleaned);
-  utter.rate = 0.95;
-  utter.pitch = 1;
-
-  // Pick a good English voice if available
-  const enVoice = _pmVoices.find(v => v.lang.startsWith('en') && !v.localService === false)
-               || _pmVoices.find(v => v.lang.startsWith('en'))
-               || _pmVoices[0];
-  if (enVoice) utter.voice = enVoice;
-
-  utter.onstart = () => {
-    btn.textContent = '◼ Stop';
-    btn.classList.add('listening');
-    _pmStartKeepalive();
-  };
-  const _done = () => {
-    btn.textContent = '♬ Listen';
-    btn.classList.remove('listening');
-    _pmStopKeepalive();
-  };
-  utter.onend = _done;
-  utter.onerror = (e) => {
-    if (e.error !== 'interrupted' && e.error !== 'canceled') {
-      btn.textContent = '⚠ Error';
-      setTimeout(() => { btn.textContent = '♬ Listen'; }, 2500);
-    } else {
-      btn.textContent = '♬ Listen';
-    }
-    btn.classList.remove('listening');
-    _pmStopKeepalive();
-  };
-
-  // Small delay so cancel() above settles (especially on Safari)
-  setTimeout(() => window.speechSynthesis.speak(utter), 120);
+  // Wait for voices to load (Chrome defers this)
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length > 0) {
+    _pmDoSpeak(btn, text);
+  } else {
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      _pmDoSpeak(btn, text);
+    };
+  }
 }
 
 /* ── Browser-native STT ── */
