@@ -54,9 +54,11 @@ def auth_page():
 
         result = auth.register(email, password, name) if mode == "register" else auth.login(email, password)
         if result.ok:
+            # Store only the compact user dict — NOT the full JWT token which can be
+            # 2-4 KB and push the session cookie over the browser's 4 KB limit,
+            # causing all session data to be silently dropped.
             session["user"] = result.user
-            session["session_token"] = result.token
-            session["session_started"] = datetime.now().isoformat()
+            session.modified = True
             return redirect(url_for("dashboard"))
         flash(result.message, "error")
         return render_template("auth.html", mode=mode)
@@ -99,6 +101,7 @@ def practice(track_id):
             reply = coach.evaluate_answer(track, answer, history)
             history.append({"role": "coach", "content": reply, "kind": "feedback"})
             session[history_key] = history[-12:]
+            session.modified = True
         return redirect(url_for("practice", track_id=track_id))
     return render_template("practice.html", user=session["user"], track=track, history=history)
 
@@ -111,8 +114,10 @@ def ask():
         prompt = request.form.get("prompt", "").strip()
         if prompt:
             chat.append({"role": "you", "content": prompt})
-            chat.append({"role": "coach", "content": coach.answer_question(prompt, chat)})
+            reply = coach.answer_question(prompt, chat)
+            chat.append({"role": "coach", "content": reply})
             session["coach_chat"] = chat[-14:]
+            session.modified = True
         return redirect(url_for("ask"))
     return render_template("ask.html", user=session["user"], chat=chat)
 
