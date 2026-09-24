@@ -69,35 +69,111 @@
 
 <script>
 /* ── Browser-native TTS ── */
+
+// Pre-load voices (async on Chrome)
+let _pmVoices = [];
+function _pmLoadVoices() {
+  _pmVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+}
+_pmLoadVoices();
+if (window.speechSynthesis) {
+  window.speechSynthesis.addEventListener('voiceschanged', _pmLoadVoices);
+}
+
+// Strip markdown / special chars before speaking
+function _pmCleanText(raw) {
+  return raw
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')  // bold / italic
+    .replace(/_{1,2}([^_]+)_{1,2}/g, '$1')      // underscore emphasis
+    .replace(/`([^`]+)`/g, '$1')                 // inline code
+    .replace(/#+\s*/g, '')                       // headings
+    .replace(/\n+/g, '. ')                       // newlines → pause
+    .trim();
+}
+
+// Chrome bug: speechSynthesis pauses silently after ~15 s.
+// Keep it alive by pause/resume every 10 s.
+let _pmKeepalive = null;
+function _pmStartKeepalive() {
+  _pmStopKeepalive();
+  _pmKeepalive = setInterval(() => {
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    } else {
+      _pmStopKeepalive();
+    }
+  }, 10000);
+}
+function _pmStopKeepalive() {
+  if (_pmKeepalive) { clearInterval(_pmKeepalive); _pmKeepalive = null; }
+}
+
+function _pmResetAllListenBtns() {
+  document.querySelectorAll('.listen-button.listening').forEach(b => {
+    b.textContent = '♬ Listen';
+    b.classList.remove('listening');
+  });
+}
+
 function pmSpeak(btn, text) {
   if (!window.speechSynthesis) {
     btn.textContent = '⚠ Not supported';
     return;
   }
+
+  // Toggle off if already speaking this button
   if (btn.classList.contains('listening')) {
     window.speechSynthesis.cancel();
-    btn.textContent = '♬ Listen';
-    btn.classList.remove('listening');
+    _pmStopKeepalive();
+    _pmResetAllListenBtns();
     return;
   }
-  window.speechSynthesis.cancel();
-  document.querySelectorAll('.listen-button.listening').forEach(b => {
-    b.textContent = '♬ Listen';
-    b.classList.remove('listening');
-  });
 
-  const utter = new SpeechSynthesisUtterance(text);
+  // Cancel any in-progress speech
+  window.speechSynthesis.cancel();
+  _pmStopKeepalive();
+  _pmResetAllListenBtns();
+
+  const cleaned = _pmCleanText(text);
+  if (!cleaned) return;
+
+  const utter = new SpeechSynthesisUtterance(cleaned);
   utter.rate = 0.95;
   utter.pitch = 1;
+
+  // Pick a good English voice if available
+  const enVoice = _pmVoices.find(v => v.lang.startsWith('en') && !v.localService === false)
+               || _pmVoices.find(v => v.lang.startsWith('en'))
+               || _pmVoices[0];
+  if (enVoice) utter.voice = enVoice;
+
   utter.onstart = () => {
     btn.textContent = '◼ Stop';
     btn.classList.add('listening');
+    _pmStartKeepalive();
   };
-  utter.onend = utter.onerror = () => {
+
+  const _done = () => {
     btn.textContent = '♬ Listen';
     btn.classList.remove('listening');
+    _pmStopKeepalive();
   };
-  window.speechSynthesis.speak(utter);
+  utter.onend = _done;
+  utter.onerror = (e) => {
+    // 'interrupted' is normal when user clicks Stop — don't flash an error
+    if (e.error !== 'interrupted' && e.error !== 'canceled') {
+      btn.textContent = '⚠ Error';
+      setTimeout(() => { btn.textContent = '♬ Listen'; }, 2500);
+    } else {
+      btn.textContent = '♬ Listen';
+    }
+    btn.classList.remove('listening');
+    _pmStopKeepalive();
+  };
+
+  // Small delay so cancel() above has time to settle (especially on Safari)
+  setTimeout(() => window.speechSynthesis.speak(utter), 120);
 }
 
 /* ── Browser-native STT ── */
