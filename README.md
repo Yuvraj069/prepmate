@@ -1,4 +1,4 @@
-# PrepMate 🎯
+# PrepMate 
 
 > **AI-powered interview coaching for technical and non-technical roles**
 
@@ -6,20 +6,6 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-3.1-black?style=flat-square&logo=flask)](https://flask.palletsprojects.com)
 [![Azure](https://img.shields.io/badge/Azure%20AI-Foundry-0078D4?style=flat-square&logo=microsoftazure&logoColor=white)](https://ai.azure.com)
-
----
-
-## 👥 Team
-
-| Name | Role |
-|---|---|
-| **Rhythm Gupta** | Team Member |
-| **Ananya Punj** | Team Member |
-| **Akshit Rawat** | Team Member |
-| **Akashdeep Matharu** | Team Member |
-| **Yuvraj Sharma** | Team Member |
-
----
 
 ## 📌 Problem Statement
 
@@ -29,7 +15,7 @@ Job seekers — especially students and early-career professionals — struggle 
 
 ---
 
-## 💡 Solution Overview
+## Solution Overview
 
 PrepMate is a web-based AI interview coach that gives every user a personal, always-on coaching session. It supports **six interview tracks** across tech and non-tech roles and operates in two modes:
 
@@ -40,7 +26,7 @@ Both modes include **voice output** (browser TTS reads coach responses aloud) an
 
 ---
 
-## 🏗️ Solution Architecture & Data Flow
+## Solution Architecture & Data Flow
 
 PrepMate is built as a **Flask web application** hosted on Render. When a user opens the app in their browser, all page interactions happen over HTTPS. Here is how the main pieces connect:
 
@@ -59,7 +45,7 @@ In short, the data flows like this:
 
 ---
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 ### Backend
 
@@ -98,7 +84,7 @@ In short, the data flows like this:
 
 ---
 
-## ⚙️ Setup Instructions
+## Setup Instructions
 
 ### Prerequisites
 
@@ -157,18 +143,7 @@ python app.py
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-### 4. Deploy to Render
-
-1. Push the repo to GitHub.
-2. Create a new **Web Service** on [Render](https://render.com), connect your repo, and set:
-   - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `gunicorn app:app`
-3. Add all `.env` values as **Environment Variables** in the Render dashboard.
-4. Every push to `main` triggers an automatic redeploy.
-
----
-
-## 🧪 Testing & Results
+## Testing & Results
 
 ### Functional Testing
 
@@ -207,7 +182,7 @@ Manual testing across all 6 tracks showed contextually accurate, track-specific 
 
 ---
 
-## 🚀 Future Improvements
+## Future Improvements
 
 - [ ] **Question bank & randomisation** — multiple questions per track shuffled each session to prevent repetition
 - [ ] **Persistent session history** — store conversation history in Supabase so users can review past sessions
